@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>FUA - FCOVER & NDVI</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <!-- PapaParse -->
+  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <style>
+    #map {
+      height: 60vh;
+    }
+    #chartContainer {
+      width: 100%;
+      margin-top: 20px;
+    }
+    canvas {
+      margin-top: 30px;
+
+    }
+  </style>
+</head>
+<body>
+
+
+<!--  FUA name display -->
+
+<div class="container-fluid my-4 px-5">
+  <!-- Bootstrap Row for map and charts -->
+  <div class="row">
+    <!-- Map container -->
+    <div class="col-12">
+      <div id="map"></div>
+    </div>
+
+  <div class="text-center mt-4">
+    <h4 id="fuaNameDisplay" class="fw-bold text-primary">Click on a polygon</h4>
+  </div>
+
+
+
+    <!-- Chart Containers (with responsive columns) -->
+<!-- NDVI Chart Card -->
+<div class="col-12 col-md-4 mt-4 d-none" id="ndviCard">
+  <div class="card">
+    <div class="card-body">
+       <h5 class="card-title text-center">NDVI</h5>
+      <canvas id="ndviChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- FCOVER Chart Card -->
+<div class="col-12 col-md-4 mt-4 d-none" id="fcoverCard">
+  <div class="card">
+    <div class="card-body">
+      <h5 class="card-title text-center">FCOVER</h5>
+      <canvas id="lineChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Null Pixels Chart Card -->
+<div class="col-12 col-md-4 mt-4 d-none" id="nullPixelCard">
+  <div class="card">
+    <div class="card-body">
+      <h5 class="card-title text-center">Null %</h5>
+      <canvas id="barChart"></canvas>
+    </div>
+  </div>
+</div>
+
+
+
+<script>
+  let lineChart, barChart, ndviChart;
+
+  const map = L.map('map').setView([50, 25], 4);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  fetch('FUA_fixed.geojson')
+    .then(res => res.json())
+    .then(geojson => {
+      L.geoJSON(geojson, {
+        style: {
+          color: "#3388ff",
+          weight: 2,
+          fillOpacity: 0.3
+        },
+        onEachFeature: (feature, layer) => {
+          layer.on('click', () => {
+            const fua_code = feature.properties.fua_code;
+            const fua_name = feature.properties.fua_name;
+
+            // Update FUA name display
+            document.getElementById('fuaNameDisplay').innerText = `Selected FUA: ${fua_name}`;
+
+
+            document.getElementById('ndviCard').classList.remove('d-none');
+            document.getElementById('fcoverCard').classList.remove('d-none');
+            document.getElementById('nullPixelCard').classList.remove('d-none');
+
+
+            showFCOVERChart(fua_code, fua_name);
+            showNullPixelChart(fua_code, fua_name);
+            showNDVIChart(fua_code, fua_name);
+          });
+        }
+      }).addTo(map);
+    });
+
+
+
+function calculateLinearTrendLine(labels, data) {
+  const x = [];
+  const y = [];
+  const validIndices = [];
+
+  // Filter valid data points
+  for (let i = 0; i < data.length; i++) {
+    const value = data[i];
+    if (value != null && !isNaN(value)) {
+      x.push(i); // use index as x
+      y.push(value);
+      validIndices.push(i);
+    }
+  }
+
+  const n = x.length;
+  if (n < 2) {
+    // Not enough data to calculate a trend line
+    return new Array(data.length).fill(null);
+  }
+
+  const sumX = x.reduce((a, b) => a + b, 0);
+  const sumY = y.reduce((a, b) => a + b, 0);
+  const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
+  const sumX2 = x.reduce((sum, xi) => sum + xi * xi, 0);
+
+  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+  const intercept = (sumY - slope * sumX) / n;
+
+  // Construct trend line, matching original data length
+  const trendLine = data.map((value, i) => {
+    return validIndices.includes(i) ? slope * i + intercept : null;
+  });
+
+  return trendLine;
+}
+
+
+
+
+
+
+
+  function showNDVIChart(fua_code, fua_name) {
+    Papa.parse('mean_NDVI_fua_EU.csv', {
+      download: true,
+      header: true,
+      complete: function(results) {
+        const filtered = results.data.filter(row => row.fua_code === fua_code);
+        filtered.sort((a, b) => parseInt(a.Year) - parseInt(b.Year));
+
+        const years = filtered.map(row => row.Year);
+        const ndvi = filtered.map(row => parseFloat(row.mean));
+
+        drawNDVILineChart2(fua_name, years, ndvi);
+      }
+    });
+  }
+
+  function showFCOVERChart(fua_code, fua_name) {
+    Papa.parse('FCOVER_mean_FUA_EU.csv', {
+      download: true,
+      header: true,
+      complete: function(results) {
+        const filtered = results.data.filter(row => row.fua_code === fua_code);
+        filtered.sort((a, b) => parseInt(a.Year) - parseInt(b.Year));
+
+        const years = filtered.map(row => row.Year);
+        const fcover = filtered.map(row => parseFloat(row.FCOVER_mean));
+
+            // Now fetch the slope data
+      showSlopeData(fua_code, fua_name, years, fcover);
+
+      }
+    });
+  }
+
+
+  // Function to read the slope data and show it in the chart
+function showSlopeData(fua_code, fua_name, years, fcover) {
+  Papa.parse('FCOVER_slope.csv', {
+    download: true,
+    header: true,
+    complete: function(results) {
+      const slopeData = results.data.find(row => row.fua_code === fua_code);
+      
+      if (slopeData) {
+        const slope_degrees = slopeData.slope_degrees;
+        const slope_title = `Slope: ${slope_degrees}°`;  // Update the title with slope degree
+
+        // Update chart with new title or additional data
+        drawLineChart(fua_name, years, fcover, slope_title);
+      } else {
+        drawLineChart(fua_name, years, fcover, 'Slope: N/A');
+      }
+    }
+  });
+}
+
+
+
+  function showNullPixelChart(fua_code, fua_name) {
+    Papa.parse('count_total_null_pixels_EU2.csv', {
+      download: true,
+      header: true,
+      complete: function(results) {
+        const filtered = results.data.filter(row => row.fua_code === fua_code);
+        filtered.sort((a, b) => parseInt(a.year) - parseInt(b.year));
+
+        const years = filtered.map(row => row.year);
+        const nulls = filtered.map(row => parseFloat(row.null_percentage));
+
+        drawBarChart(fua_name, years, nulls);
+      }
+    });
+  }
+
+
+
+
+
+
+function drawNDVILineChart2(title, labels, data) {
+  const ctx = document.getElementById('ndviChart').getContext('2d');
+
+    const canvas = document.getElementById('ndviChart');
+    canvas.height = 180;   // Set the height of the canvas directly (change this value as needed)
+  
+  if (ndviChart) ndviChart.destroy();
+
+  const trendData = calculateLinearTrendLine(labels, data);
+
+  ndviChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: `Mean NDVI - ${title}`,
+          data: data,
+          borderColor: 'rgba(0, 200, 0, 0.8)',
+          fill: false,
+          tension: 0.3
+        },
+        {
+          label: 'Trend Line',
+          data: trendData,
+          borderColor: 'rgba(0, 0, 0, 0.5)',
+          borderDash: [5, 5],
+          fill: false,
+          tension: 0,
+          pointRadius: 0
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { title: { display: true, text: 'Year' } },
+        y: { title: { display: true, text: 'Mean NDVI' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+
+function drawLineChart(title, labels, data, slope_title) {
+  const ctx = document.getElementById('lineChart').getContext('2d');
+  const canvas = document.getElementById('lineChart');
+  canvas.height = 180;  // Set the height of the canvas directly (change this value as needed)
+  
+  if (lineChart) lineChart.destroy();
+
+  const trendData = calculateLinearTrendLine(labels, data);
+
+  lineChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: `Mean FCOVER (100%) - ${title}`,
+          data: data,
+          borderColor: 'rgba(75, 192, 192, 1)',
+          fill: false,
+          tension: 0.3
+        },
+        {
+          label: 'Trend Line',
+          data: trendData,
+          borderColor: 'rgba(0, 0, 0, 0.5)',
+          borderDash: [5, 5],
+          fill: false,
+          tension: 0,
+          pointRadius: 0
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: {
+          display: true,
+          text: `${title} - ${slope_title}`  // Display slope degree in chart title
+        }
+      },
+      scales: {
+        x: { title: { display: true, text: 'Year' } },
+        y: { title: { display: true, text: 'Mean FCOVER (100%)' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+
+  function drawBarChart(title, labels, data) {
+    const ctx = document.getElementById('barChart').getContext('2d');
+
+      const canvas = document.getElementById('barChart');
+  canvas.height = 180;  // Set the height of the canvas directly (change this value as needed)
+  
+    if (barChart) barChart.destroy();
+
+    barChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: `Null Pixels (%) - ${title}`,
+          data: data,
+          backgroundColor: 'rgba(255, 99, 132, 0.6)'
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: { title: { display: true, text: 'Year' } },
+          y: { title: { display: true, text: 'Null Pixels (%) of FUA area' }, beginAtZero: true }
+        }
+      }
+    });
+  }
+</script>
+
+<!-- Bootstrap JS (optional) -->
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.min.js"></script>
+
+</body>
+</html>
