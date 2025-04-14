@@ -93,34 +93,73 @@
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
 
+  let selectedPolygon = null; // Track currently selected polygon
+
   fetch('FUA_fixed.geojson')
     .then(res => res.json())
     .then(geojson => {
-      L.geoJSON(geojson, {
-        style: {
-          color: "#3388ff",
-          weight: 2,
-          fillOpacity: 0.3
-        },
-        onEachFeature: (feature, layer) => {
-          layer.on('click', () => {
-            const fua_code = feature.properties.fua_code;
-            const fua_name = feature.properties.fua_name;
+const geojsonLayer = L.geoJSON(geojson, {
+  style: {
+    color: "#3388ff",
+    weight: 2,
+    fillOpacity: 0.3
+  },
+onEachFeature: (feature, layer) => {
+  layer.on({
+    click: () => {
+      const fua_code = feature.properties.fua_code;
+      const fua_name = feature.properties.fua_name;
 
-            // Update FUA name display
-            document.getElementById('fuaNameDisplay').innerText = `Selected FUA: ${fua_name}`;
+      // Reset previous polygon style
+      if (selectedPolygon && selectedPolygon !== layer) {
+        geojsonLayer.resetStyle(selectedPolygon);
+      }
 
+      // Highlight clicked polygon
+      layer.setStyle({
+        weight: 4,
+        color: '#ff7800',
+        fillOpacity: 0.5
+      });
 
-            document.getElementById('ndviCard').classList.remove('d-none');
-            document.getElementById('fcoverCard').classList.remove('d-none');
-            document.getElementById('nullPixelCard').classList.remove('d-none');
+      selectedPolygon = layer;
 
+      // Zoom to polygon
+      map.fitBounds(layer.getBounds());
 
-            showFCOVERChart(fua_code, fua_name);
-            showNullPixelChart(fua_code, fua_name);
-            showNDVIChart(fua_code, fua_name);
-          });
-        }
+      // Update FUA name
+      document.getElementById('fuaNameDisplay').innerText = `Selected FUA: ${fua_name}`;
+
+      // Show charts
+      document.getElementById('ndviCard').classList.remove('d-none');
+      document.getElementById('fcoverCard').classList.remove('d-none');
+      document.getElementById('nullPixelCard').classList.remove('d-none');
+
+      // Draw charts
+      showFCOVERChart(fua_code, fua_name);
+      showNullPixelChart(fua_code, fua_name);
+      showNDVIChart(fua_code, fua_name);
+    },
+
+    mouseover: (e) => {
+      if (selectedPolygon !== layer) {
+        layer.setStyle({
+          weight: 3,
+          color: '#999',
+          fillOpacity: 0.4
+        });
+      }
+    },
+
+    mouseout: () => {
+      if (selectedPolygon !== layer) {
+        geojsonLayer.resetStyle(layer);
+      }
+    }
+  });
+}
+
+      
       }).addTo(map);
     });
 
