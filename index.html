@@ -28,184 +28,195 @@
     }
     canvas {
       margin-top: 30px;
-
     }
   </style>
 </head>
 <body>
-
-
-<!--  FUA name display -->
-
 <div class="container-fluid my-4 px-5">
-  <!-- Bootstrap Row for map and charts -->
+  <!-- Dropdowns -->
+  <div class="row mb-3">
+    <div class="col-md-6">
+      <label for="countryDropdown" class="form-label">Select Country:</label>
+      <select id="countryDropdown" class="form-select">
+        <option value="">-- Select Country --</option>
+      </select>
+    </div>
+    <div class="col-md-6">
+      <label for="fuaDropdown" class="form-label">Select FUA:</label>
+      <select id="fuaDropdown" class="form-select" disabled>
+        <option value="">-- Select FUA --</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Map container -->
   <div class="row">
-    <!-- Map container -->
     <div class="col-12">
       <div id="map"></div>
     </div>
+  </div>
 
   <div class="text-center mt-4">
     <h4 id="fuaNameDisplay" class="fw-bold text-primary">Click on a polygon</h4>
   </div>
 
+  <!-- Chart Cards -->
+ <!-- Chart Section -->
+<div class="container-fluid mt-4">
+  <div class="row">
+    <div class="col-12 d-flex flex-wrap justify-content-center gap-4">
+      <!-- NDVI Chart Card -->
+      <div class="card" id="ndviCard" style="flex: 1 1 300px; min-width: 300px; max-width: 32%;" class="d-none">
+        <div class="card-body">
+          <h5 class="card-title text-center">NDVI</h5>
+          <canvas id="ndviChart"></canvas>
+        </div>
+      </div>
 
+      <!-- FCOVER Chart Card -->
+      <div class="card" id="fcoverCard" style="flex: 1 1 300px; min-width: 300px; max-width: 32%;" class="d-none">
+        <div class="card-body">
+          <h5 class="card-title text-center">FCOVER</h5>
+          <canvas id="lineChart"></canvas>
+        </div>
+      </div>
 
-    <!-- Chart Containers (with responsive columns) -->
-<!-- NDVI Chart Card -->
-<div class="col-12 col-md-4 mt-4 d-none" id="ndviCard">
-  <div class="card">
-    <div class="card-body">
-       <h5 class="card-title text-center">NDVI</h5>
-      <canvas id="ndviChart"></canvas>
+      <!-- Null Pixels Chart Card -->
+      <div class="card" id="nullPixelCard" style="flex: 1 1 300px; min-width: 300px; max-width: 32%;" class="d-none">
+        <div class="card-body">
+          <h5 class="card-title text-center">Null %</h5>
+          <canvas id="barChart"></canvas>
+        </div>
+      </div>
     </div>
   </div>
 </div>
-
-<!-- FCOVER Chart Card -->
-<div class="col-12 col-md-4 mt-4 d-none" id="fcoverCard">
-  <div class="card">
-    <div class="card-body">
-      <h5 class="card-title text-center">FCOVER</h5>
-      <canvas id="lineChart"></canvas>
-    </div>
-  </div>
-</div>
-
-<!-- Null Pixels Chart Card -->
-<div class="col-12 col-md-4 mt-4 d-none" id="nullPixelCard">
-  <div class="card">
-    <div class="card-body">
-      <h5 class="card-title text-center">Null %</h5>
-      <canvas id="barChart"></canvas>
-    </div>
-  </div>
-</div>
-
 
 
 <script>
-  let lineChart, barChart, ndviChart;
-
-  const map = L.map('map').setView([50, 25], 4);
+  let map = L.map('map').setView([50, 25], 4);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
 
-  let selectedPolygon = null; // Track currently selected polygon
+  let geojsonLayer;
+  let selectedPolygon = null;
+  let allFeatures = [];
+  let lineChart, barChart, ndviChart;
+
+  const countryDropdown = document.getElementById('countryDropdown');
+  const fuaDropdown = document.getElementById('fuaDropdown');
 
   fetch('FUA_fixed.geojson')
     .then(res => res.json())
     .then(geojson => {
-const geojsonLayer = L.geoJSON(geojson, {
-  style: {
-    color: "#3388ff",
-    weight: 2,
-    fillOpacity: 0.3
-  },
-onEachFeature: (feature, layer) => {
-  layer.on({
-    click: () => {
-      const fua_code = feature.properties.fua_code;
-      const fua_name = feature.properties.fua_name;
+      allFeatures = geojson.features;
 
-      // Reset previous polygon style
-      if (selectedPolygon && selectedPolygon !== layer) {
-        geojsonLayer.resetStyle(selectedPolygon);
-      }
-
-      // Highlight clicked polygon
-      layer.setStyle({
-        weight: 4,
-        color: '#ff7800',
-        fillOpacity: 0.5
+      // Populate country dropdown
+      const countries = [...new Set(allFeatures.map(f => f.properties.country))].sort();
+      countries.forEach(country => {
+        const option = document.createElement('option');
+        option.value = country;
+        option.textContent = country;
+        countryDropdown.appendChild(option);
       });
 
-      selectedPolygon = layer;
-
-      // Zoom to polygon
-      map.fitBounds(layer.getBounds());
-
-      // Update FUA name
-      document.getElementById('fuaNameDisplay').innerText = `Selected FUA: ${fua_name}`;
-
-      // Show charts
-      document.getElementById('ndviCard').classList.remove('d-none');
-      document.getElementById('fcoverCard').classList.remove('d-none');
-      document.getElementById('nullPixelCard').classList.remove('d-none');
-
-      // Draw charts
-      showFCOVERChart(fua_code, fua_name);
-      showNullPixelChart(fua_code, fua_name);
-      showNDVIChart(fua_code, fua_name);
-    },
-
-    mouseover: (e) => {
-      if (selectedPolygon !== layer) {
-        layer.setStyle({
-          weight: 3,
-          color: '#999',
-          fillOpacity: 0.4
-        });
-      }
-    },
-
-    mouseout: () => {
-      if (selectedPolygon !== layer) {
-        geojsonLayer.resetStyle(layer);
-      }
-    }
-  });
-}
-
-      
+      geojsonLayer = L.geoJSON(geojson, {
+        style: {
+          color: "#3388ff",
+          weight: 2,
+          fillOpacity: 0.3
+        },
+        onEachFeature: (feature, layer) => {
+          layer.on({
+            click: () => handlePolygonClick(feature, layer),
+            mouseover: () => {
+              if (selectedPolygon !== layer) {
+                layer.setStyle({ weight: 3, color: '#999', fillOpacity: 0.4 });
+              }
+            },
+            mouseout: () => {
+              if (selectedPolygon !== layer) {
+                geojsonLayer.resetStyle(layer);
+              }
+            }
+          });
+        }
       }).addTo(map);
     });
 
+  countryDropdown.addEventListener('change', function () {
+    const selectedCountry = this.value;
+    fuaDropdown.innerHTML = '<option value="">-- Select FUA --</option>';
+    fuaDropdown.disabled = true;
 
+    if (selectedCountry) {
+      const fuas = allFeatures
+        .filter(f => f.properties.country === selectedCountry)
+        .map(f => ({ name: f.properties.fua_name, code: f.properties.fua_code }));
 
-function calculateLinearTrendLine(labels, data) {
-  const x = [];
-  const y = [];
-  const validIndices = [];
+      fuas.sort((a, b) => a.name.localeCompare(b.name));
 
-  // Filter valid data points
-  for (let i = 0; i < data.length; i++) {
-    const value = data[i];
-    if (value != null && !isNaN(value)) {
-      x.push(i); // use index as x
-      y.push(value);
-      validIndices.push(i);
+      fuas.forEach(({ name, code }) => {
+        const option = document.createElement('option');
+        option.value = code;
+        option.textContent = name;
+        fuaDropdown.appendChild(option);
+      });
+
+      fuaDropdown.disabled = false;
     }
-  }
-
-  const n = x.length;
-  if (n < 2) {
-    // Not enough data to calculate a trend line
-    return new Array(data.length).fill(null);
-  }
-
-  const sumX = x.reduce((a, b) => a + b, 0);
-  const sumY = y.reduce((a, b) => a + b, 0);
-  const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
-  const sumX2 = x.reduce((sum, xi) => sum + xi * xi, 0);
-
-  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-  const intercept = (sumY - slope * sumX) / n;
-
-  // Construct trend line, matching original data length
-  const trendLine = data.map((value, i) => {
-    return validIndices.includes(i) ? slope * i + intercept : null;
   });
 
-  return trendLine;
+  fuaDropdown.addEventListener('change', function () {
+    const selectedFuaCode = this.value;
+    if (!selectedFuaCode) return;
+
+    geojsonLayer.eachLayer(layer => {
+      if (layer.feature.properties.fua_code === selectedFuaCode) {
+        layer.fire('click');
+      }
+    });
+  });
+
+function handlePolygonClick(feature, layer) {
+  const fua_code = feature.properties.fua_code;
+  const fua_name = feature.properties.fua_name;
+  const country = feature.properties.country;
+
+  // Reset previously selected polygon style
+  if (selectedPolygon && selectedPolygon !== layer) {
+    geojsonLayer.resetStyle(selectedPolygon);
+  }
+
+  // Highlight selected polygon
+  layer.setStyle({ weight: 4, color: '#ff7800', fillOpacity: 0.5 });
+  selectedPolygon = layer;
+  map.fitBounds(layer.getBounds());
+
+  // 🟡 Update dropdowns
+  countryDropdown.value = country;
+
+  // Trigger change to repopulate FUA dropdown
+  const event = new Event('change');
+  countryDropdown.dispatchEvent(event);
+
+  // Delay setting FUA dropdown to allow options to load
+  setTimeout(() => {
+    fuaDropdown.value = fua_code;
+  }, 50);
+
+  // Update UI + show charts
+  document.getElementById('fuaNameDisplay').innerText = `Selected FUA: ${fua_name}`;
+  document.getElementById('ndviCard').classList.remove('d-none');
+  document.getElementById('fcoverCard').classList.remove('d-none');
+  document.getElementById('nullPixelCard').classList.remove('d-none');
+
+  showFCOVERChart(fua_code, fua_name);
+  showNullPixelChart(fua_code, fua_name);
+  showNDVIChart(fua_code, fua_name);
 }
-
-
-
-
-
 
 
   function showNDVIChart(fua_code, fua_name) {
@@ -213,12 +224,9 @@ function calculateLinearTrendLine(labels, data) {
       download: true,
       header: true,
       complete: function(results) {
-        const filtered = results.data.filter(row => row.fua_code === fua_code);
-        filtered.sort((a, b) => parseInt(a.Year) - parseInt(b.Year));
-
+        const filtered = results.data.filter(row => row.fua_code === fua_code).sort((a, b) => +a.Year - +b.Year);
         const years = filtered.map(row => row.Year);
         const ndvi = filtered.map(row => parseFloat(row.mean));
-
         drawNDVILineChart2(fua_name, years, ndvi);
       }
     });
@@ -229,174 +237,113 @@ function calculateLinearTrendLine(labels, data) {
       download: true,
       header: true,
       complete: function(results) {
-        const filtered = results.data.filter(row => row.fua_code === fua_code);
-        filtered.sort((a, b) => parseInt(a.Year) - parseInt(b.Year));
-
+        const filtered = results.data.filter(row => row.fua_code === fua_code).sort((a, b) => +a.Year - +b.Year);
         const years = filtered.map(row => row.Year);
         const fcover = filtered.map(row => parseFloat(row.FCOVER_mean));
-
-            // Now fetch the slope data
-      showSlopeData(fua_code, fua_name, years, fcover);
-
+        showSlopeData(fua_code, fua_name, years, fcover);
       }
     });
   }
 
-
-  // Function to read the slope data and show it in the chart
-function showSlopeData(fua_code, fua_name, years, fcover) {
-  Papa.parse('FCOVER_slope.csv', {
-    download: true,
-    header: true,
-    complete: function(results) {
-      const slopeData = results.data.find(row => row.fua_code === fua_code);
-      
-      if (slopeData) {
-        const slope_degrees = slopeData.slope_degrees;
-        const slope_title = `Slope: ${slope_degrees}°`;  // Update the title with slope degree
-
-        // Update chart with new title or additional data
+  function showSlopeData(fua_code, fua_name, years, fcover) {
+    Papa.parse('FCOVER_slope.csv', {
+      download: true,
+      header: true,
+      complete: function(results) {
+        const slopeData = results.data.find(row => row.fua_code === fua_code);
+        const slope_title = slopeData ? `Slope: ${slopeData.slope_degrees}°` : 'Slope: N/A';
         drawLineChart(fua_name, years, fcover, slope_title);
-      } else {
-        drawLineChart(fua_name, years, fcover, 'Slope: N/A');
       }
-    }
-  });
-}
-
-
+    });
+  }
 
   function showNullPixelChart(fua_code, fua_name) {
     Papa.parse('count_total_null_pixels_EU2.csv', {
       download: true,
       header: true,
       complete: function(results) {
-        const filtered = results.data.filter(row => row.fua_code === fua_code);
-        filtered.sort((a, b) => parseInt(a.year) - parseInt(b.year));
-
+        const filtered = results.data.filter(row => row.fua_code === fua_code).sort((a, b) => +a.year - +b.year);
         const years = filtered.map(row => row.year);
         const nulls = filtered.map(row => parseFloat(row.null_percentage));
-
         drawBarChart(fua_name, years, nulls);
       }
     });
   }
 
-
-
-
-
-
-function drawNDVILineChart2(title, labels, data) {
-  const ctx = document.getElementById('ndviChart').getContext('2d');
-
-    const canvas = document.getElementById('ndviChart');
-    canvas.height = 180;   // Set the height of the canvas directly (change this value as needed)
-  
-  if (ndviChart) ndviChart.destroy();
-
-  const trendData = calculateLinearTrendLine(labels, data);
-
-  ndviChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets: [
-        {
-          label: `Mean NDVI - ${title}`,
-          data: data,
-          borderColor: 'rgba(0, 200, 0, 0.8)',
-          fill: false,
-          tension: 0.3
-        },
-        {
-          label: 'Trend Line',
-          data: trendData,
-          borderColor: 'rgba(0, 0, 0, 0.5)',
-          borderDash: [5, 5],
-          fill: false,
-          tension: 0,
-          pointRadius: 0
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      scales: {
-        x: { title: { display: true, text: 'Year' } },
-        y: { title: { display: true, text: 'Mean NDVI' }, beginAtZero: true }
+  function calculateLinearTrendLine(labels, data) {
+    const x = [], y = [], validIndices = [];
+    for (let i = 0; i < data.length; i++) {
+      if (data[i] != null && !isNaN(data[i])) {
+        x.push(i);
+        y.push(data[i]);
+        validIndices.push(i);
       }
     }
-  });
-}
+    if (x.length < 2) return new Array(data.length).fill(null);
+    const sumX = x.reduce((a, b) => a + b), sumY = y.reduce((a, b) => a + b);
+    const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
+    const sumX2 = x.reduce((sum, xi) => sum + xi * xi, 0);
+    const slope = (x.length * sumXY - sumX * sumY) / (x.length * sumX2 - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / x.length;
+    return data.map((_, i) => validIndices.includes(i) ? slope * i + intercept : null);
+  }
 
-
-function drawLineChart(title, labels, data, slope_title) {
-  const ctx = document.getElementById('lineChart').getContext('2d');
-  const canvas = document.getElementById('lineChart');
-  canvas.height = 180;  // Set the height of the canvas directly (change this value as needed)
-  
-  if (lineChart) lineChart.destroy();
-
-  const trendData = calculateLinearTrendLine(labels, data);
-
-  lineChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets: [
-        {
-          label: `Mean FCOVER (100%) - ${title}`,
-          data: data,
-          borderColor: 'rgba(75, 192, 192, 1)',
-          fill: false,
-          tension: 0.3
-        },
-        {
-          label: 'Trend Line',
-          data: trendData,
-          borderColor: 'rgba(0, 0, 0, 0.5)',
-          borderDash: [5, 5],
-          fill: false,
-          tension: 0,
-          pointRadius: 0
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      plugins: {
-        title: {
-          display: true,
-          text: `${title} - ${slope_title}`  // Display slope degree in chart title
-        }
+  function drawNDVILineChart2(title, labels, data) {
+    const ctx = document.getElementById('ndviChart').getContext('2d');
+    document.getElementById('ndviChart').height = 180;
+    if (ndviChart) ndviChart.destroy();
+    ndviChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: `Mean NDVI - ${title}`, data, borderColor: 'rgba(0,200,0,0.8)', fill: false, tension: 0.3 },
+          { label: 'Trend Line', data: calculateLinearTrendLine(labels, data), borderColor: 'rgba(0,0,0,0.5)', borderDash: [5, 5], fill: false, tension: 0, pointRadius: 0 }
+        ]
       },
-      scales: {
-        x: { title: { display: true, text: 'Year' } },
-        y: { title: { display: true, text: 'Mean FCOVER (100%)' }, beginAtZero: true }
+      options: {
+        responsive: true,
+        scales: {
+          x: { title: { display: true, text: 'Year' } },
+          y: { title: { display: true, text: 'Mean NDVI' }, beginAtZero: true }
+        }
       }
-    }
-  });
-}
+    });
+  }
 
+  function drawLineChart(title, labels, data, slope_title) {
+    const ctx = document.getElementById('lineChart').getContext('2d');
+    document.getElementById('lineChart').height = 180;
+    if (lineChart) lineChart.destroy();
+    lineChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: `Mean FCOVER (100%) - ${title}`, data, borderColor: 'rgba(75, 192, 192, 1)', fill: false, tension: 0.3 },
+          { label: 'Trend Line', data: calculateLinearTrendLine(labels, data), borderColor: 'rgba(0,0,0,0.5)', borderDash: [5, 5], fill: false, tension: 0, pointRadius: 0 }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: { title: { display: true, text: `${title} - ${slope_title}` } },
+        scales: {
+          x: { title: { display: true, text: 'Year' } },
+          y: { title: { display: true, text: 'Mean FCOVER (100%)' }, beginAtZero: true }
+        }
+      }
+    });
+  }
 
   function drawBarChart(title, labels, data) {
     const ctx = document.getElementById('barChart').getContext('2d');
-
-      const canvas = document.getElementById('barChart');
-  canvas.height = 180;  // Set the height of the canvas directly (change this value as needed)
-  
+    document.getElementById('barChart').height = 180;
     if (barChart) barChart.destroy();
-
     barChart = new Chart(ctx, {
       type: 'bar',
       data: {
-        labels: labels,
-        datasets: [{
-          label: `Null Pixels (%) - ${title}`,
-          data: data,
-          backgroundColor: 'rgba(255, 99, 132, 0.6)'
-        }]
+        labels,
+        datasets: [{ label: `Null Pixels (%) - ${title}`, data, backgroundColor: 'rgba(255, 99, 132, 0.6)' }]
       },
       options: {
         responsive: true,
@@ -409,9 +356,8 @@ function drawLineChart(title, labels, data, slope_title) {
   }
 </script>
 
-<!-- Bootstrap JS (optional) -->
+<!-- Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.min.js"></script>
-
 </body>
 </html>
