@@ -64,28 +64,44 @@
  <!-- Chart Section -->
 <div class="container-fluid mt-4">
   <div class="row">
-    <div class="col-12 d-flex flex-wrap justify-content-center gap-4">
-      <!-- NDVI Chart Card -->
-      <div class="card" id="ndviCard" style="flex: 1 1 300px; min-width: 300px; max-width: 32%;" class="d-none">
+   <div class="col-12">
+  <div class="row">
+    <!-- NDVI Chart Card -->
+    <div class="col-md-6 mb-4">
+      <div class="card d-none" id="ndviCard">
         <div class="card-body">
           <h5 class="card-title text-center">NDVI</h5>
           <canvas id="ndviChart"></canvas>
         </div>
       </div>
+    </div>
 
-      <!-- FCOVER Chart Card -->
-      <div class="card" id="fcoverCard" style="flex: 1 1 300px; min-width: 300px; max-width: 32%;" class="d-none">
+    <!-- FCOVER Chart Card -->
+    <div class="col-md-6 mb-4">
+      <div class="card d-none" id="fcoverCard">
         <div class="card-body">
           <h5 class="card-title text-center">FCOVER</h5>
           <canvas id="lineChart"></canvas>
         </div>
       </div>
+    </div>
 
-      <!-- Null Pixels Chart Card -->
-      <div class="card" id="nullPixelCard" style="flex: 1 1 300px; min-width: 300px; max-width: 32%;" class="d-none">
+    <!-- Null Pixels Chart Card -->
+    <div class="col-md-6 mb-4">
+      <div class="card d-none" id="nullPixelCard">
         <div class="card-body">
           <h5 class="card-title text-center">Null %</h5>
           <canvas id="barChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- GINI Chart Card -->
+    <div class="col-md-6 mb-4">
+      <div class="card d-none" id="giniCard">
+        <div class="card-body">
+          <h5 class="card-title text-center">GINI Index</h5>
+          <canvas id="giniChart"></canvas>
         </div>
       </div>
     </div>
@@ -93,7 +109,9 @@
 </div>
 
 
+
 <script>
+  let giniChart;
   let map = L.map('map').setView([50, 25], 4);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
@@ -216,8 +234,26 @@ function handlePolygonClick(feature, layer) {
   showFCOVERChart(fua_code, fua_name);
   showNullPixelChart(fua_code, fua_name);
   showNDVIChart(fua_code, fua_name);
+  document.getElementById('giniCard').classList.remove('d-none');
+  showGINIChart(fua_code, fua_name);
 }
 
+
+function showGINIChart(fua_code, fua_name) {
+  Papa.parse('GINI.csv', {
+    download: true,
+    header: true,
+    complete: function(results) {
+      const filtered = results.data
+        .filter(row => row.fua_code === fua_code)
+        .sort((a, b) => +a.Year - +b.Year);
+
+      const years = filtered.map(row => row.Year);
+      const gini = filtered.map(row => parseFloat(row.Gini));
+      drawGINIChart(fua_name, years, gini);
+    }
+  });
+}
 
   function showNDVIChart(fua_code, fua_name) {
     Papa.parse('mean_NDVI_fua_EU.csv', {
@@ -256,6 +292,33 @@ function handlePolygonClick(feature, layer) {
       }
     });
   }
+
+  function showGINIChart(fua_code, fua_name) {
+  Papa.parse('GINI.csv', {
+    download: true,
+    header: true,
+    complete: function(results) {
+      const filtered = results.data
+        .filter(row => row.fua_code === fua_code)
+        .sort((a, b) => +a.Year - +b.Year);
+
+      const years = filtered.map(row => row.Year);
+      const gini = filtered.map(row => parseFloat(row.Gini));
+
+      // 🔄 Now load slope before drawing chart
+      Papa.parse('GINI_slope.csv', {
+        download: true,
+        header: true,
+        complete: function(slopeResults) {
+          const slopeData = slopeResults.data.find(row => row.fua_code === fua_code);
+          const slope_title = slopeData ? `Slope: ${slopeData.slope_degrees}°` : 'Slope: N/A';
+          drawGINIChart(fua_name, years, gini, slope_title);
+        }
+      });
+    }
+  });
+}
+
 
   function showNullPixelChart(fua_code, fua_name) {
     Papa.parse('count_total_null_pixels_EU2.csv', {
@@ -334,6 +397,70 @@ function handlePolygonClick(feature, layer) {
       }
     });
   }
+
+
+function drawGINIChart(title, labels, data, slope_title) {
+  const ctx = document.getElementById('giniChart').getContext('2d');
+  document.getElementById('giniChart').height = 180;
+  if (giniChart) giniChart.destroy();
+
+  giniChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: `GINI Index - ${title}`,
+          data,
+          borderColor: 'rgba(153, 102, 255, 0.8)',
+          fill: false,
+          tension: 0.3
+        },
+        {
+          label: 'Trend Line',
+          data: calculateLinearTrendLine(labels, data),
+          borderColor: 'rgba(0,0,0,0.5)',
+          borderDash: [5, 5],
+          fill: false,
+          tension: 0,
+          pointRadius: 0
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: {
+          display: true,
+          text: `${title} - ${slope_title}`
+        }
+      },
+scales: {
+  x: {
+    title: {
+      display: true,
+      text: 'Year'
+    }
+  },
+  y: {
+    title: {
+      display: true,
+      text: 'GINI Index'
+    },
+    min: 0,
+    max: 1,
+    ticks: {
+      stepSize: 0.1
+    }
+  }
+}
+
+    }
+  });
+}
+
+
+
 
   function drawBarChart(title, labels, data) {
     const ctx = document.getElementById('barChart').getContext('2d');
