@@ -350,7 +350,7 @@ function showGreennessSlopeData(fua_code, fua_name, years, values) {
         .sort((a, b) => +a.Year - +b.Year);
 
       const years = filtered.map(row => row.Year);
-      const gini = filtered.map(row => parseFloat(row.Gini)*100);
+      const gini = filtered.map(row => parseFloat(row.Gini));
 
       // 🔄 Now load slope before drawing chart
       Papa.parse('GINI_slope.csv', {
@@ -550,12 +550,12 @@ scales: {
   y: {
     title: {
       display: true,
-      text: 'GINI Index (%)'
+      text: 'GINI Index'
     },
     min: 0,
-    max: 100,
+    max: 1,
     ticks: {
-      stepSize: 10
+      stepSize: 0.1
     }
   }
 }
