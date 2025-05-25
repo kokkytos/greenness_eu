@@ -86,15 +86,16 @@
       </div>
     </div>
 
-    <!-- Null Pixels Chart Card -->
+    <!-- Greenness Chart Card -->
     <div class="col-md-6 mb-4">
-      <div class="card d-none" id="nullPixelCard">
+      <div class="card d-none" id="greennessCard">
         <div class="card-body">
-          <h5 class="card-title text-center">Null %</h5>
-          <canvas id="barChart"></canvas>
+          <h5 class="card-title text-center">Greenness</h5>
+          <canvas id="greennessChart"></canvas>
         </div>
       </div>
     </div>
+
 
     <!-- GINI Chart Card -->
     <div class="col-md-6 mb-4">
@@ -108,6 +109,15 @@
   </div>
 </div>
 
+    <!-- Null Pixels Chart Card -->
+    <div class="col-md-6 mb-4">
+      <div class="card d-none" id="nullPixelCard">
+        <div class="card-body">
+          <h5 class="card-title text-center">Null %</h5>
+          <canvas id="barChart"></canvas>
+        </div>
+      </div>
+    </div>
 
 
 <script>
@@ -122,6 +132,7 @@
   let selectedPolygon = null;
   let allFeatures = [];
   let lineChart, barChart, ndviChart;
+  let greennessChart;
 
   const countryDropdown = document.getElementById('countryDropdown');
   const fuaDropdown = document.getElementById('fuaDropdown');
@@ -236,6 +247,10 @@ function handlePolygonClick(feature, layer) {
   showNDVIChart(fua_code, fua_name);
   document.getElementById('giniCard').classList.remove('d-none');
   showGINIChart(fua_code, fua_name);
+
+  document.getElementById('greennessCard').classList.remove('d-none');
+  showGreennessChart(fua_code, fua_name);
+
 }
 
 
@@ -280,6 +295,38 @@ function showGINIChart(fua_code, fua_name) {
       }
     });
   }
+
+function showGreennessChart(fua_code, fua_name) {
+  Papa.parse('FCOVER_mean_FUA_EU_kernel-5px.csv', {
+    download: true,
+    header: true,
+    complete: function(results) {
+      const filtered = results.data
+        .filter(row => row.fua_code === fua_code)
+        .sort((a, b) => +a.Year - +b.Year);
+
+      const years = filtered.map(row => row.Year);
+      const values = filtered.map(row => parseFloat(row.kernel_mean));
+
+      showGreennessSlopeData(fua_code, fua_name, years, values);
+    }
+  });
+}
+
+
+
+function showGreennessSlopeData(fua_code, fua_name, years, values) {
+  Papa.parse('FCOVER_mean_FUA_EU_kernel-5px_slope.csv', {
+    download: true,
+    header: true,
+    complete: function(results) {
+      const slopeData = results.data.find(row => row.fua_code === fua_code);
+      const slope_title = slopeData ? `Slope: ${slopeData.slope_degrees}°` : 'Slope: N/A';
+      drawGreennessChart(fua_name, years, values, slope_title);
+    }
+  });
+}
+
 
   function showSlopeData(fua_code, fua_name, years, fcover) {
     Papa.parse('FCOVER_slope.csv', {
@@ -399,6 +446,64 @@ function showGINIChart(fua_code, fua_name) {
   }
 
 
+
+function drawGreennessChart(title, labels, data, slope_title) {
+  const ctx = document.getElementById('greennessChart').getContext('2d');
+  document.getElementById('greennessChart').height = 180;
+  if (greennessChart) greennessChart.destroy();
+
+  greennessChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: `Mean Greenness - ${title}`,
+          data,
+          borderColor: 'rgba(34, 139, 34, 0.8)',
+          fill: false,
+          tension: 0.3
+        },
+        {
+          label: 'Trend Line',
+          data: calculateLinearTrendLine(labels, data),
+          borderColor: 'rgba(0,0,0,0.5)',
+          borderDash: [5, 5],
+          fill: false,
+          tension: 0,
+          pointRadius: 0
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: {
+          display: true,
+          text: `${title} - ${slope_title}`
+        }
+      },
+      scales: {
+        x: {
+          title: {
+            display: true,
+            text: 'Year'
+          }
+        },
+        y: {
+          title: {
+            display: true,
+            text: 'Mean Greenness'
+          },
+          beginAtZero: true
+        }
+      }
+    }
+  });
+}
+
+
+
 function drawGINIChart(title, labels, data, slope_title) {
   const ctx = document.getElementById('giniChart').getContext('2d');
   document.getElementById('giniChart').height = 180;
@@ -470,7 +575,7 @@ scales: {
       type: 'bar',
       data: {
         labels,
-        datasets: [{ label: `Null Pixels (%) - ${title}`, data, backgroundColor: 'rgba(255, 99, 132, 0.6)' }]
+        datasets: [{ label: `Null Pixels (%) - ${title}`, data, backgroundColor: 'rgba(255, 165, 0, 0.6)'  }]
       },
       options: {
         responsive: true,
